@@ -1,31 +1,29 @@
--- NEXUS AIMBOT GOLD MOBILE OP - Painel EDUCATIVO + Noclip (adaptado para uso em seu jogo)
+-- NEXUS EDU - Painel enxuto (sem Bala Mágica / AutoFire), Hitbox ampliado e Noclip robusto
 -- Use apenas no seu próprio jogo / ambiente de desenvolvimento.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local UIS = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 -- CONFIG
-local TARGET_PART = "Head"
 local AIM_FOV = 150
 local AIM_SMOOTH = 1 -- 1 = instant, 0.2 = suave
-local HITBOX_MULT = 4 -- aumento do hitbox para treino
+local HITBOX_MULT = 6 -- agora maior; ajuste se quiser (6 = 6x)
 -- FLAGS
-local aimActive, espActive, hitboxActive, magicBulletActive, autofireActive, lowGraphicsActive, noclipActive = false,false,false,false,false,false,false
+local aimActive, espActive, hitboxActive, lowGraphicsActive, noclipActive = false,false,false,false,false
 
-local originalSizes = {}
-local originalCollision = {} -- para restaurar colisões do jogador
+local originalSizes = {}         -- guarda tamanho original por parte
+local originalCollision = {}     -- guarda CanCollide original por personagem (tabela de part -> bool)
 
 -- GUI
 local gui = Instance.new("ScreenGui")
+gui.Name = "NexusEduGui"
 gui.Parent = player:WaitForChild("PlayerGui")
 gui.ResetOnSpawn = false
-gui.Name = "NexusEduGui"
 
 -- Open button
 local openBtn = Instance.new("TextButton")
@@ -67,8 +65,6 @@ local y = 10
 local aimBtn = makeBtn("Ativar Aimbot (Treino)",y) y+=54
 local espBtn = makeBtn("Ativar ESP (Visual)",y) y+=54
 local hitBtn = makeBtn("Ativar Hitbox (Treino)",y) y+=54
-local magicBtn = makeBtn("Ativar Bala Mágica (DESATIVADO)",y) y+=54 -- placeholder
-local fireBtn = makeBtn("Ativar AutoFire (DESATIVADO)",y) y+=54 -- placeholder
 local graphicsBtn = makeBtn("Gráficos Super Low",y) y+=54
 local noclipBtn = makeBtn("Ativar Noclip",y) y+=54
 local closeBtn = makeBtn("Fechar Menu",y)
@@ -88,14 +84,6 @@ end)
 hitBtn.MouseButton1Click:Connect(function()
     hitboxActive = not hitboxActive
     hitBtn.Text = hitboxActive and "Desativar Hitbox (Treino)" or "Ativar Hitbox (Treino)"
-end)
-magicBtn.MouseButton1Click:Connect(function()
-    magicBulletActive = not magicBulletActive
-    magicBtn.Text = magicBulletActive and "Desativar Bala Mágica (DESATIVADO)" or "Ativar Bala Mágica (DESATIVADO)"
-end)
-fireBtn.MouseButton1Click:Connect(function()
-    autofireActive = not autofireActive
-    fireBtn.Text = autofireActive and "Desativar AutoFire (DESATIVADO)" or "Ativar AutoFire (DESATIVADO)"
 end)
 graphicsBtn.MouseButton1Click:Connect(function()
     lowGraphicsActive = not lowGraphicsActive
@@ -137,7 +125,6 @@ graphicsBtn.MouseButton1Click:Connect(function()
         end
     end
 
-    -- Iluminação otimizada
     if lowGraphicsActive then
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 50
@@ -152,85 +139,96 @@ graphicsBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Noclip helper functions (aplica somente ao personagem local)
-local function setCharacterCollision(char, enabled)
+local function saveCollisionForCharacter(char)
     if not char then return end
-    local id = char:GetDebugId() -- identificador temporário (não-persistente) -- usado só para tabela
-    -- armazenar/restaurar uma vez
-    if enabled then
-        -- restaurar colisões para os que foram alterados
-        if originalCollision[char] then
-            for part, canCollide in pairs(originalCollision[char]) do
-                if part and part.Parent then
-                    pcall(function() part.CanCollide = canCollide end)
-                end
-            end
-            originalCollision[char] = nil
-        end
-    else
-        -- salvar estados originais e aplicar noclip
-        originalCollision[char] = originalCollision[char] or {}
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                if originalCollision[char][part] == nil then
-                    originalCollision[char][part] = part.CanCollide
-                end
-                pcall(function() part.CanCollide = false end)
-            end
+    if originalCollision[char] then return end
+    originalCollision[char] = {}
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            originalCollision[char][part] = part.CanCollide
         end
     end
 end
 
--- Noclip toggle
+local function restoreCollisionForCharacter(char)
+    if not char or not originalCollision[char] then return end
+    for part, canCollide in pairs(originalCollision[char]) do
+        if part and part.Parent then
+            pcall(function() part.CanCollide = canCollide end)
+        end
+    end
+    originalCollision[char] = nil
+end
+
+local function applyNoclipToCharacter(char)
+    if not char then return end
+    -- salvar
+    saveCollisionForCharacter(char)
+    -- desativar colisão em todas as partes
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function() part.CanCollide = false end)
+        end
+    end
+    -- tentar manter humanoid em estado compatível com atravessar (cliente)
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
+    end
+end
+
+local function removeNoclipFromCharacter(char)
+    if not char then return end
+    restoreCollisionForCharacter(char)
+    -- tentar restaurar estado do humanoid
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        -- tenta colocar em estado natural (se possível)
+        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    end
+end
+
 noclipBtn.MouseButton1Click:Connect(function()
     noclipActive = not noclipActive
     noclipBtn.Text = noclipActive and "Desativar Noclip" or "Ativar Noclip"
-
     local char = player.Character or player.CharacterAdded:Wait()
-    -- aplica ou restaura
-    setCharacterCollision(char, not noclipActive)
+    if noclipActive then
+        applyNoclipToCharacter(char)
+    else
+        removeNoclipFromCharacter(char)
+    end
 end)
 
--- quando o personagem respawnar, garantir estado do noclip e limpar tabela antiga
 player.CharacterAdded:Connect(function(char)
-    -- pequena espera para partes existirem
-    char:WaitForChild("Humanoid", 5)
     wait(0.1)
     if noclipActive then
-        setCharacterCollision(char, false)
+        applyNoclipToCharacter(char)
     else
-        setCharacterCollision(char, true)
+        -- garante estado normal (restaura caso tenha tabela antiga)
+        removeNoclipFromCharacter(char)
     end
 end)
 
--- Aimbot inteligente (apenas câmera de treino, sem disparo remoto)
-local function getClosest()
-    local center = Vector2.new(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
-    local best,dist
-    for _,pl in pairs(Players:GetPlayers()) do
-        if pl~=player and pl.Character and pl.Character:FindFirstChild(TARGET_PART) then
-            local pos,vis = camera:WorldToViewportPoint(pl.Character[TARGET_PART].Position)
-            if vis then
-                local mag = (Vector2.new(pos.X,pos.Y)-center).Magnitude
-                if mag<AIM_FOV and (not dist or mag<dist) then
-                    best = pl.Character[TARGET_PART]
-                    dist = mag
-                end
+-- Hitbox ampliado: agora tenta expandir as partes principais (mais confiável)
+local function expandHitboxesForCharacter(char)
+    if not char then return end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            -- salvar tamanho original uma só vez
+            if not originalSizes[part] then
+                originalSizes[part] = part.Size
             end
+            -- aplica escala (atenção: escalar pode afetar posicionamento/anim)
+            local ok, _ = pcall(function()
+                part.Size = originalSizes[part] * HITBOX_MULT
+                -- tornar visível para debug (opcional): usar Neon/transparency
+                -- part.Material = Enum.Material.Neon
+                -- part.Transparency = 0.5
+            end)
         end
     end
-    return best
 end
 
-local function expandHitbox(char)
-    if not char or not char:FindFirstChild(TARGET_PART) then return end
-    local part = char[TARGET_PART]
-    if not originalSizes[part] then originalSizes[part] = part.Size end
-    part.Size = originalSizes[part]*HITBOX_MULT
-    part.Material = Enum.Material.Neon
-    part.Transparency = 0.5
-end
-
--- Restaurar hitboxes quando desativar
 local function restoreHitboxes()
     for part, size in pairs(originalSizes) do
         if part and part.Parent then
@@ -258,46 +256,73 @@ local function removeESPFromCharacter(char)
     if h then h:Destroy() end
 end
 
--- Loop principal: aimbot, esp e hitbox (execução local e segura)
+-- Aimbot: encontra parte visível mais próxima à center (prioriza Head/UpperTorso/Root)
+local function getClosestTargetPart()
+    local center = Vector2.new(camera.ViewportSize.X/2,camera.ViewportSize.Y/2)
+    local best, dist
+    for _, pl in pairs(Players:GetPlayers()) do
+        if pl ~= player and pl.Character and pl.Character.Parent then
+            local char = pl.Character
+            local candidates = {"Head","UpperTorso","LowerTorso","Torso","HumanoidRootPart"}
+            local foundPart
+            for _, name in ipairs(candidates) do
+                if char:FindFirstChild(name) then
+                    foundPart = char[name]
+                    break
+                end
+            end
+            if foundPart then
+                local pos, vis = camera:WorldToViewportPoint(foundPart.Position)
+                if vis then
+                    local mag = (Vector2.new(pos.X,pos.Y)-center).Magnitude
+                    if mag < AIM_FOV and (not dist or mag < dist) then
+                        best = foundPart
+                        dist = mag
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- Loop principal
 RunService.RenderStepped:Connect(function(dt)
-    -- Aimbot: apenas ajustar câmera para treino (sem atirar remotamente)
+    -- Aimbot (apenas câmera de treino)
     if aimActive then
-        local target = getClosest()
-        if target and target.Parent then
-            local targetCFrame = CFrame.new(camera.CFrame.Position, target.Position)
-            if AIM_SMOOTH>=1 then
+        local targetPart = getClosestTargetPart()
+        if targetPart and targetPart.Parent then
+            local targetCFrame = CFrame.new(camera.CFrame.Position, targetPart.Position)
+            if AIM_SMOOTH >= 1 then
                 camera.CFrame = targetCFrame
             else
-                camera.CFrame = camera.CFrame:Lerp(targetCFrame,AIM_SMOOTH)
+                camera.CFrame = camera.CFrame:Lerp(targetCFrame, AIM_SMOOTH)
             end
         end
     end
 
-    -- ESP + Hitbox: aplicar localmente (não faz network)
-    for _,p in pairs(Players:GetPlayers()) do
-        if p ~= player and p.Character then
+    -- ESP e Hitbox
+    for _, pl in pairs(Players:GetPlayers()) do
+        if pl ~= player and pl.Character then
             if espActive then
-                applyESPToCharacter(p.Character)
+                applyESPToCharacter(pl.Character)
             else
-                removeESPFromCharacter(p.Character)
+                removeESPFromCharacter(pl.Character)
             end
-
             if hitboxActive then
-                expandHitbox(p.Character)
+                expandHitboxesForCharacter(pl.Character)
             end
         end
     end
 
     if not hitboxActive then
-        -- restaura se não ativo
         restoreHitboxes()
     end
 
-    -- Noclip: garantir que o jogador local não colida enquanto ativo (proteção contínua)
+    -- Noclip: reaplicar continuamente no cliente para evitar partes recém-criadas voltarem a colidir
     if noclipActive then
         local char = player.Character
         if char then
-            -- reaplicar para qualquer parte nova
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then
                     if part.CanCollide then
@@ -305,18 +330,29 @@ RunService.RenderStepped:Connect(function(dt)
                     end
                 end
             end
+            -- força humanoid Physics state para reduzir chances de bloqueio por colisão do servidor
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
+            end
         end
     end
 end)
 
--- Limpeza ao fechar (opcional)
+-- Limpeza ao fechar/remoção da GUI
 gui.AncestryChanged:Connect(function()
     if not gui:IsDescendantOf(game) then
-        -- restaurar estados
+        -- restaurar tudo
         local char = player.Character
-        if char then setCharacterCollision(char, true) end
+        if char then
+            removeNoclipFromCharacter(char)
+        end
         restoreHitboxes()
+        -- remover ESPs residuais
+        for _, pl in pairs(Players:GetPlayers()) do
+            if pl.Character then removeESPFromCharacter(pl.Character) end
+        end
     end
 end)
 
-warn("NEXUS EDU PAINEL carregado! Use apenas no seu jogo para testes/treino.")
+warn("NEXUS EDU PAINEL (sem BalaMágica/AutoFire). Hitbox ampliado e Noclip robusto carregados.")
