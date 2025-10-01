@@ -1,4 +1,4 @@
--- NEXUS EDU - Painel enxuto (sem Bala Mágica / AutoFire), Hitbox ampliado e Noclip robusto
+-- NEXUS EDU - Painel enxuto (sem bala Mágica / AutoFire), Hitbox ampliado e Noclip robusto
 -- Use apenas no seu próprio jogo / ambiente de desenvolvimento.
 
 local Players = game:GetService("Players")
